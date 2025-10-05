@@ -1,0 +1,61 @@
+name: Build apk and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build apk and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.29.3
+          cache: true
+          
+      - run: flutter pub get
+      - run: flutter build apk
+       
+      - name: Rename APK with tag version
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/story-${{ github.ref_name }}-universal-release.apk
+
+      - name: Extract changelog
+        id: changelog
+        run: |
+          # 从标签中提取版本号
+          VERSION=${GITHUB_REF#refs/tags/}
+          # 使用脚本提取更新内容
+          CHANGELOG=$(./scripts/extract_changelog.sh "$VERSION")
+          # 设置输出变量
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          body: ${{ steps.changelog.outputs.changelog }}
+          files: |
+            build/app/outputs/flutter-apk/story-${{ github.ref_name }}-universal-release.apk
+    
